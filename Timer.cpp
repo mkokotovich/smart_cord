@@ -64,6 +64,18 @@ void Timer::set(unsigned long duration_ms, String &state)
     state = m_state;
 }
 
+void Timer::set(String timestr)
+{
+    String ignore;
+    set(timestr, ignore);
+}
+
+void Timer::set(String timestr, String &state)
+{
+    // timestr should be something like 7:00 PM
+    // First parse string into time
+}
+
 void Timer::cancel()
 {
     String ignore;

@@ -14,12 +14,13 @@ class Timer {
         ~Timer() {};
 
         bool isActive();
-        void deactivate();
         bool isExpired();
         bool isExpired(String &state);
 
         void set(unsigned long duration_ms);
         void set(unsigned long duration_ms, String &state);
+        void set(String timestr);
+        void set(String timestr, String &state);
 	
         void cancel();
         void cancel(String &state);
@@ -29,6 +30,8 @@ class Timer {
 	String getState();
         
     private:
+        void deactivate();
+
         unsigned long m_start_ms;
         unsigned long m_duration_ms;
         unsigned long m_state_last_updated;
