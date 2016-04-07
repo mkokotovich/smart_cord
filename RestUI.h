@@ -2,19 +2,15 @@
 #include <aREST.h>
 // Needs to be from https://github.com/mkokotovich/aREST_UI until pull request is merged in
 #include <aREST_UI.h>
+#include "AlarmHandler.h"
 
 #define READ_TIMEOUT 10000 //10 seconds
 
-// Defined in .ino
-void controlRelay(int state);
-extern String current_state;
-extern String onTimer_state;
-extern String offTimer_state;
-extern Timer onTimer;
-extern Timer offTimer;
-
 // Create aREST instance
 aREST_UI rest = aREST_UI();
+
+// Create AlarmHandler
+AlarmHandler alarmHandler = alarmHandler();
 
 // The port to listen for UI
 #define UI_LISTEN_PORT           80
@@ -23,57 +19,57 @@ aREST_UI rest = aREST_UI();
 WiFiServer server(UI_LISTEN_PORT);
 
 
-// Rest UI variables
+// Rest UI variables (declared in ino)
+extern String current_state;
+String activeTimers = "None";
+
+
+// Functions declared in ino
+void powerOn();
+void powerOff();
 
 // Rest UI functions
-
 int powerOn(String command)
 {
-    controlRelay(LOW);
-    current_state = "On";
+    powerOn();
     return 1;
 }
 
 int powerOff(String command)
 {
-    controlRelay(HIGH);
-    current_state = "Off";
+    powerOff();
     return 1;
 }
 
-int onTimerFunc(String command)
+
+int setTimer(String command)
 {
-    Serial.print("onTimerFunc called with: ");
-    Serial.println(command);
+    String options[MAX_OPTIONS];
+    int hour = 0;
+    int minute = 0;
+    int duration = 0;
 
-    // Passed to us in minutes, need to convert
-    unsigned long timer_ms_duration = strtoul(command.c_str(), NULL, 10) * 60 * 1000;
-    onTimer.set(timer_ms_duration, onTimer_state);
+    Serial.println("setTimer called with: " + command);
 
-    return 1;
-}
+    alarmHandler.parse_timer_string(command, options, hour, minute, duration);
 
-int offTimerFunc(String command)
-{
-    Serial.print("offTimerFunc called with: ");
-    Serial.println(command);
+    alarmHandler.add_new_timer(options, hour, minute, duration);
 
-    // Passed to us in minutes, need to convert
-    unsigned long timer_ms_duration = strtoul(command.c_str(), NULL, 10) * 60 * 1000;
-    offTimer.set(timer_ms_duration, offTimer_state);
+    activeTimers += command;
 
     return 1;
 }
 
-int cancelOnTimer(String command)
+int cancelAllTimers(String command)
 {
-    onTimer.cancel(onTimer_state);
+    alarmHandler.cancelAllTimers();
+    activeTimers = "None";
     return 1;
 }
 
-int cancelOffTimer(String command)
+int pauseAllTimers(String command)
 {
-    offTimer.cancel(offTimer_state);
+    activeTimers += "Paused";
     return 1;
 }
 
@@ -92,17 +88,13 @@ void setupRestUI()
     rest.function_button("powerOn", "Power On", powerOn);
     rest.function_button("powerOff", "Power Off", powerOff);
 
-    rest.label("Turn on after:");
-    rest.function_with_input_button("onTimerFunc", "minutes", onTimerFunc);
+    rest.label("Add a timer:");
+    rest.function_with_input_button("setTimer", "Add", setTimer);
     // Display the timer state
-    rest.variable_label("onTimer_state", "Minutes until timer turns the cord on", &onTimer_state);
-    rest.function_button("cancelOffTimer", "Cancel Timer", cancelOnTimer);
+    rest.variable_label("activeTimers", "Active Timers", &activeTimers);
+    rest.function_button("pauseAllTimers", "Pause/Resume All Timers", pauseAllTimers);
+    rest.function_button("cancelAllTimers", "Cancel All Timers", cancelAllTimers);
 
-    rest.label("Turn off after:");
-    rest.function_with_input_button("offTimerFunc", "minutes", offTimerFunc);
-    // Display the timer state
-    rest.variable_label("offTimer_state", "Minutes until timer turns the cord off", &offTimer_state);
-    rest.function_button("cancelOffTimer", "Cancel Timer", cancelOffTimer);
 }
 
 void startRestUIServer(void)

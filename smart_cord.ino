@@ -1,9 +1,12 @@
 
 #include <ESP8266WiFi.h>
+#include <Time.h>
+#include <TimeAlarms.h>
 #include "Timer.h"
 #include "private.h"
 #include "RestUI.h"
 #include "OTAUpdates.h"
+#include "ntptime.h"
 
 const char* ssid     = private_ssid;
 const char* password = private_password;
@@ -16,6 +19,7 @@ int debug_pin = D4;
 int DEBUG = 1;
 
 // Variable to hold the current state of relay, which will be displayed
+
 String current_state = "UNINITIALIZED";
 String onTimer_state = "Disabled";
 String offTimer_state = "Disabled";
@@ -30,6 +34,18 @@ void controlRelay(int state)
   {
     digitalWrite(debug_pin, state);
   }
+}
+
+void powerOn()
+{
+    controlRelay(LOW);
+    current_state = "On";
+}
+
+void powerOff()
+{
+    controlRelay(HIGH);
+    current_state = "Off";
 }
 
 void startWifi(void)
@@ -69,17 +85,19 @@ void setup(void)
   startWifi();
   startRestUIServer();
   startUpdateServer();
+  start_ntptime();
 }
 
 void loop() {
   // Reset device if wifi is disconnected
-  if (WiFi.status() == WL_DISCONNECTED)
+  if (WiFi.status() != WL_CONNECTED)
   {
     Serial.println("Wifi diconnected, reset connection");
     
     startWifi();
     startRestUIServer();
     startUpdateServer();
+    start_ntptime();
   }
 
   // Handle onTimer
