@@ -1,11 +1,15 @@
 #include "AlarmHandler.h"
 
+// Global
+AlarmHandler alarmHandler = AlarmHandler();
+
 AlarmHandler::AlarmHandler():
-    num_alarms(0)
+    paused(false),
+    next_alarm(0)
 {
     for (int i = 0; i < MAX_ALARMS; i++)
     {
-        alarms[i] = 0;
+        alarms[i] = dtINVALID_ALARM_ID;
     }
 }
 
@@ -202,25 +206,31 @@ void AlarmHandler::add_new_timer(
 
 void AlarmHandler::cancelAllAlarms()
 {
-    for (int i = 0; i < num_alarms; i++)
+    for (int i = 0; i < MAX_ALARMS; i++)
     {
-        Alarm.disable(alarms[i]);
+        if (alarms[i] != dtINVALID_ALARM_ID)
+        {
+            cancel(alarms[i]);
+            alarms[i] = dtINVALID_ALARM_ID;
+        }
     }
-    num_alarms = 0;
     paused = false;
 }
 
 void AlarmHandler::pauseAllAlarms()
 {
-    for (int i = 0; i < num_alarms; i++)
+    for (int i = 0; i < MAX_ALARMS; i++)
     {
-        if (paused == true)
+        if (alarms[i] != dtINVALID_ALARM_ID)
         {
-            Alarm.enable(alarms[i]);
-        }
-        else
-        {
-            Alarm.disable(alarms[i]);
+            if (paused == true)
+            {
+                Alarm.enable(alarms[i]);
+            }
+            else
+            {
+                Alarm.disable(alarms[i]);
+            }
         }
     }
     paused = !paused;
@@ -228,6 +238,109 @@ void AlarmHandler::pauseAllAlarms()
 
 void AlarmHandler::add(AlarmID_t id)
 {
-    alarms[num_alarms] = id;
-    num_alarms++;
+    for (int i = 0; i < MAX_ALARMS; i++)
+    {
+        if (alarms[i] == dtINVALID_ALARM_ID)
+        {
+            alarms[i] = id;
+        }
+    }
 }
+
+void AlarmHandler::cancel(AlarmID_t id)
+{
+    Alarm.disable(id);
+    Alarm.free(id);
+}
+
+void AlarmHandler::updateActiveAlarms(String &activeAlarms)
+{
+    if (now() < next_alarm)
+    {
+        return;
+    }
+    else
+    {
+        activeAlarms = printAlarms();
+        next_alarm = Alarm.getNextTrigger();
+    }
+}
+
+String AlarmHandler::printAlarms()
+{
+    time_t active_alarms[MAX_ALARMS];
+    int current_alarm = 0;
+
+    for (int i = 0; i < MAX_ALARMS; i++)
+    {
+        if (alarms[i] != dtINVALID_ALARM_ID)
+        {
+            active_alarms[current_alarm] = Alarm.read(alarms[i]);
+            if (active_alarms[current_alarm] == dtINVALID_TIME)
+            {
+                // Remove all alarms that are no longer active
+                // They don't need to be cancelled, that happens automatically
+                alarms[i] = dtINVALID_ALARM_ID;
+            }
+            else
+            {
+                current_alarm++;
+            }
+        }
+    }
+    
+    // Code copied from Running Median example
+    // sort current_alarm
+    for (uint8_t i=0; i< current_alarm-1; i++)
+    {
+        uint8_t m = i;
+        for (uint8_t j=i+1; j< current_alarm; j++)
+        {
+            if (active_alarms[j] < active_alarms[m]) m = j;
+        }
+        if (m != i)
+        {
+            time_t t = active_alarms[m];
+            active_alarms[m] = active_alarms[i];
+            active_alarms[i] = t;
+        }
+    }
+
+    String output = "";    
+    for (int i = 0; i < current_alarm; i++)
+    {
+        output += digitalClockDisplay(active_alarms[i]) + "\n";
+    }
+
+    return output;
+}
+
+
+String AlarmHandler::digitalClockDisplay(time_t time)
+{
+    return String(month(time)) + "/" + String(day(time)) + " at " + String(hourFormat12(time)) + printDigits(minute(time)) + (isAM(time) ? " AM" : " PM");
+    String output = "";
+    // digital clock display of the time
+    Serial.print(hour());
+    printDigits(minute());
+    printDigits(second());
+    Serial.print(" ");
+    Serial.print(day());
+    Serial.print(".");
+    Serial.print(month());
+    Serial.print(".");
+    Serial.print(year()); 
+    Serial.println(); 
+}
+
+String AlarmHandler::printDigits(int digits)
+{
+    // utility for digital clock display: prints preceding colon and leading 0
+    String output = ":";
+    if(digits < 10)
+        output += "0";
+    output += String(digits);
+
+    return output;
+}
+

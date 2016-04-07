@@ -1,8 +1,8 @@
 #include <ESP8266WiFi.h>
-#include "Timer.h"
 #include "private.h"
 #include "RestUI.h"
 #include "OTAUpdates.h"
+#include "AlarmHandler.h"
 
 const char* ssid     = private_ssid;
 const char* password = private_password;
@@ -16,12 +16,7 @@ int DEBUG = 1;
 
 // Variable to hold the current state of relay, which will be displayed
 String current_state = "UNINITIALIZED";
-String onTimer_state = "Disabled";
-String offTimer_state = "Disabled";
-String activeTimers = "UN";
-
-Timer onTimer = Timer();
-Timer offTimer = Timer();
+String activeTimers = "None";
 
 void controlRelay(int state)
 {
@@ -94,24 +89,8 @@ void loop() {
     startUpdateServer();
   }
 
-  // Handle onTimer
-  if (onTimer.isActive())
-  {
-    if (onTimer.isExpired(onTimer_state))
-    {
-      Serial.println("OnTimer is up!");
-      powerOn("");
-    }
-  }
-  // Handle offTimer
-  if (offTimer.isActive())
-  {
-    if (offTimer.isExpired(offTimer_state))
-    {
-      Serial.println("OffTimer is up!");
-      powerOff("");
-    }
-  }
+  // Update active timers, if needed
+  alarmHandler.updateActiveAlarms(activeTimers);
 
   handleOTAUpdate();
   handleRestUI();
