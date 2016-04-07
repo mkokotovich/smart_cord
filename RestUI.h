@@ -10,7 +10,7 @@
 aREST_UI rest = aREST_UI();
 
 // Create AlarmHandler
-AlarmHandler alarmHandler = alarmHandler();
+AlarmHandler alarmHandler = AlarmHandler();
 
 // The port to listen for UI
 #define UI_LISTEN_PORT           80
@@ -21,7 +21,7 @@ WiFiServer server(UI_LISTEN_PORT);
 
 // Rest UI variables (declared in ino)
 extern String current_state;
-String activeTimers = "None";
+extern String activeTimers;
 
 
 // Functions declared in ino
@@ -41,7 +41,6 @@ int powerOff(String command)
     return 1;
 }
 
-
 int setTimer(String command)
 {
     String options[MAX_OPTIONS];
@@ -51,7 +50,11 @@ int setTimer(String command)
 
     Serial.println("setTimer called with: " + command);
 
-    alarmHandler.parse_timer_string(command, options, hour, minute, duration);
+    if (!alarmHandler.parse_timer_string(command, options, hour, minute, duration))
+    {
+        Serial.println("Error parsing command!");
+        return -1;
+    }
 
     alarmHandler.add_new_timer(options, hour, minute, duration);
 
@@ -62,13 +65,14 @@ int setTimer(String command)
 
 int cancelAllTimers(String command)
 {
-    alarmHandler.cancelAllTimers();
+    alarmHandler.cancelAllAlarms();
     activeTimers = "None";
     return 1;
 }
 
 int pauseAllTimers(String command)
 {
+    alarmHandler.pauseAllAlarms();
     activeTimers += "Paused";
     return 1;
 }

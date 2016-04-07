@@ -1,12 +1,14 @@
 #include <Time.h>
-#include <TimeAlarm.h>
+#include <TimeLib.h>
+#include <TimeAlarms.h>
+#include <Arduino.h>
 
 #define MAX_OPTIONS 5
 #define MAX_ALARMS 20
 
 // Rest UI variables
-extern String current_state = "UNINITIALIZED";
-extern String activeTimers = "None";
+extern String current_state;
+extern String activeTimers;
 
 // Alarm functions (defined in .ino)
 
@@ -26,14 +28,14 @@ class AlarmHandler {
 public:
     AlarmHandler();
 
-    void parse_timer_string(String command,
-        String &options[],
+    bool parse_timer_string(String command,
+        String options[],
         int &hour,
         int &minute,
         int &duration);
 
     void add_new_timer(
-        String &options[],
+        String options[],
         int &hour,
         int &minute,
         int &duration);

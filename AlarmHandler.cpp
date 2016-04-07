@@ -9,14 +9,14 @@ AlarmHandler::AlarmHandler():
     }
 }
 
-void AlarmHandler::parse_timer_string(String command,
-        String &options[],
+bool AlarmHandler::parse_timer_string(String command,
+        String options[],
         int &hour,
         int &minute,
         int &duration)
 {
     String temp = "";
-    current_option = 0;
+    int current_option = 0;
     bool success = false;
 
     parse_state state = unknown;
@@ -26,9 +26,14 @@ void AlarmHandler::parse_timer_string(String command,
         switch (state)
         {
             case option:
-                if (command.charAt(i) == ')')
+                if (command.charAt(i) == ' ')
                 {
                     // End of option
+                    if (current_option == MAX_OPTIONS)
+                    {
+                        // Just skip it
+                        continue;
+                    }
                     options[current_option++] = temp;
                     temp = "";
                     state = unknown;
@@ -41,31 +46,40 @@ void AlarmHandler::parse_timer_string(String command,
             case time_unknown:
                 if (command.charAt(i) == ':')
                 {
+                    // End of the hour
                     hour = temp.toInt();
                     i++; // skip the :
                     state = time_minute;
+                    temp = "";
                 }
-                else if (command.charAt(i) == '(' || command.charAt(i) == ' ')
+                else if (command.charAt(i) < '0' || command.charAt(i) > '9')
                 {
                     // Reached the end of the time without hitting :, must be duration
                     duration = temp.toInt();
-                    state = unknown;
                     success = true;
+                    state = option;
+                    temp = "";
+                    temp += command.charAt(i);
                 }
                 else
                 {
                     temp += command.charAt(i);
                 }
+                break;
             case time_minute:
                 if (command.charAt(i) < '0' || command.charAt(i) > '9')
                 {
+                    // Reached the end of the minute
                     minute = temp.toInt();
                     state = time_ampm;
+                    temp = "";
+                    i--; // Re-process this character in ampm state
                 }
                 else
                 {
                     temp += command.charAt(i);
                 }
+                break;
             case time_ampm:
                 if (command.length() >= i+2)
                 {
@@ -93,14 +107,17 @@ void AlarmHandler::parse_timer_string(String command,
                 }
                 break;
             case unknown:
-                if (command.charAt(i) == '(')
+                if (command.charAt(i) < '0' || command.charAt(i) > '9')
                 {
-                    // Beginning of an option
+                    // Not a number, must be beginning of an option
                     state = option;
+                    temp = "";
+                    temp += command.charAt(i);
                 }
                 else if (command.charAt(i) >= '0' && command.charAt(i) <= '9')
                 {
                     state = time_unknown;
+                    temp = "";
                     temp += command.charAt(i);
                 }
                 break;
@@ -131,10 +148,12 @@ void AlarmHandler::parse_timer_string(String command,
             Serial.println("Parsed time: " + String(hour) + ":" + String(minute));
         }
     }
+
+    return success;
 }
 
 void AlarmHandler::add_new_timer(
-        String &options[],
+        String options[],
         int &hour,
         int &minute,
         int &duration)
@@ -181,7 +200,7 @@ void AlarmHandler::add_new_timer(
     add(id);
 }
 
-int AlarmHandler::cancelAllTimers()
+void AlarmHandler::cancelAllAlarms()
 {
     for (int i = 0; i < num_alarms; i++)
     {
@@ -191,18 +210,15 @@ int AlarmHandler::cancelAllTimers()
     paused = false;
 }
 
-int AlarmHandler::pauseAllTimers()
+void AlarmHandler::pauseAllAlarms()
 {
-    if (paused == true)
+    for (int i = 0; i < num_alarms; i++)
     {
-        for (int i = 0; i < num_alarms; i++)
+        if (paused == true)
         {
             Alarm.enable(alarms[i]);
         }
-    }
-    else
-    {
-        for (int i = 0; i < num_alarms; i++)
+        else
         {
             Alarm.disable(alarms[i]);
         }
