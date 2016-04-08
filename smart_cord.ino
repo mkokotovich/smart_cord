@@ -86,7 +86,7 @@ void setup(void)
 
 void loop() {
   // Reset device if wifi is disconnected
-  if (WiFi.status() == WL_DISCONNECTED)
+  if (WiFi.status() != WL_CONNECTED)
   {
     Serial.println("Wifi diconnected, reset connection");
     
