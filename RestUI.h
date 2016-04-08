@@ -42,6 +42,8 @@ int setAlarm(String command)
     int hour = 0;
     int minute = 0;
     int duration = 0;
+    OnTick_t func = NULL;
+    String func_action = String();
 
     Serial.println("setAlarm called with: " + command);
 
@@ -52,7 +54,29 @@ int setAlarm(String command)
         return -1;
     }
 
-    if (!alarmHandler.add_new_timer(options, hour, minute, duration))
+    // Parse the options for smart_cord specific ones
+    for (int i = 0; i < MAX_OPTIONS; i++)
+    {
+        if (options[i].equalsIgnoreCase("ON"))
+        {
+            func = powerOn;
+            func_action += "On";
+        }
+        else if (options[i].equalsIgnoreCase("OFF"))
+        {
+            func = powerOff;
+            func_action += "Off";
+        }
+    }
+
+    if (func == NULL)
+    {
+        activeAlarms = "Must supply ON or OFF as an option";
+        Serial.println(activeAlarms);
+        return -1;
+    }
+
+    if (!alarmHandler.add_new_timer(options, hour, minute, duration, func, func_action))
     {
         activeAlarms = "Error adding timer";
         Serial.println(activeAlarms);

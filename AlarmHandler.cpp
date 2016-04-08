@@ -181,53 +181,37 @@ bool AlarmHandler::add_new_timer(
         String options[],
         int &hour,
         int &minute,
-        int &duration)
+        int &duration,
+        OnTick_t func,
+        String func_action)
 {
-    OnTick_t func = NULL;
     bool repeating = false;
     AlarmID_t id = 0;
     time_t trigger_time = 0;
-    String action = " - ";
+    String action = " - " + func_action;
 
-    // Parse the options
+    // Parse the options for timer-specific ones
     for (int i = 0; i < MAX_OPTIONS; i++)
     {
-        if (options[i].equalsIgnoreCase("ON"))
-        {
-            func = powerOn;
-            action += "On ";
-        }
-        else if (options[i].equalsIgnoreCase("OFF"))
-        {
-            func = powerOff;
-            action += "Off ";
-        }
-        else if (options[i].equalsIgnoreCase("R"))
+        if (options[i].equalsIgnoreCase("R"))
         {
             repeating = true;
-            action += "(Repeating) ";
+            action += " (Repeating)";
         }
-    }
-
-    if (func == NULL)
-    {
-        Serial.println("Must supply ON or OFF as an option");
-        return false;
     }
 
     if (duration == 0)
     {
         // Alarm
-        time_t alarm_time = hour * SECS_PER_HOUR + minute * SECS_PER_MIN;
-        trigger_time = alarm_time;
+        trigger_time = hour * SECS_PER_HOUR + minute * SECS_PER_MIN;
 
         if (repeating)
         {
-            id = Alarm.alarmRepeat(alarm_time, func);
+            id = Alarm.alarmRepeat(trigger_time, func);
         }
         else
         {
-            id = Alarm.alarmOnce(alarm_time, func);
+            id = Alarm.alarmOnce(trigger_time, func);
         }
     }
     else
@@ -366,6 +350,7 @@ String AlarmHandler::printAlarms()
     String output = displayAlarmAsString(active_alarms[0]);
     // newline for separator
     String sep = "%0A";
+    //String sep = ", ";
     for (int i = 1; i < current_alarm; i++)
     {
         output += sep + displayAlarmAsString(active_alarms[i]);

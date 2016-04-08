@@ -47,7 +47,9 @@ public:
         String options[],
         int &hour,
         int &minute,
-        int &duration);
+        int &duration,
+        OnTick_t func,
+        String func_action);
 
     void pauseAllAlarms();
     void cancelAllAlarms();
