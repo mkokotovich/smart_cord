@@ -117,6 +117,7 @@ void setupRestUI()
 
     rest.label("Add an alarm:");
     rest.function_with_input_button("setAlarm", "Add", setAlarm);
+    rest.label("For example: 10:15 PM off, or 7:00 am on, or 15 on (in 15 minutes turn it on)", true);
     // Display the timer state
     rest.variable_label("activeAlarms", "Active Alarms", &activeAlarms);
     rest.function_button("pauseAllTimers", "Pause/Resume All Timers", pauseAllTimers);
