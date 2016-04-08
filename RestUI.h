@@ -17,7 +17,7 @@ WiFiServer server(UI_LISTEN_PORT);
 
 // Rest UI variables (declared in ino)
 extern String current_state;
-extern String activeTimers;
+extern String activeAlarms;
 
 // Functions declared in ino
 void powerOn();
@@ -36,22 +36,28 @@ int powerOff(String command)
     return 1;
 }
 
-int setTimer(String command)
+int setAlarm(String command)
 {
     String options[MAX_OPTIONS];
     int hour = 0;
     int minute = 0;
     int duration = 0;
 
-    Serial.println("setTimer called with: " + command);
+    Serial.println("setAlarm called with: " + command);
 
     if (!alarmHandler.parse_timer_string(command, options, hour, minute, duration))
     {
-        Serial.println("Error parsing command!");
+        activeAlarms = "Error parsing timer string";
+        Serial.println(activeAlarms);
         return -1;
     }
 
-    alarmHandler.add_new_timer(options, hour, minute, duration);
+    if (!alarmHandler.add_new_timer(options, hour, minute, duration))
+    {
+        activeAlarms = "Error adding timer";
+        Serial.println(activeAlarms);
+        return -1;
+    }
 
     return 1;
 }
@@ -85,10 +91,10 @@ void setupRestUI()
     rest.function_button("powerOn", "Power On", powerOn);
     rest.function_button("powerOff", "Power Off", powerOff);
 
-    rest.label("Add a timer:");
-    rest.function_with_input_button("setTimer", "Add", setTimer);
+    rest.label("Add an alarm:");
+    rest.function_with_input_button("setAlarm", "Add", setAlarm);
     // Display the timer state
-    rest.variable_label("activeTimers", "Active Timers", &activeTimers);
+    rest.variable_label("activeAlarms", "Active Alarms", &activeAlarms);
     rest.function_button("pauseAllTimers", "Pause/Resume All Timers", pauseAllTimers);
     rest.function_button("cancelAllTimers", "Cancel All Timers", cancelAllTimers);
 

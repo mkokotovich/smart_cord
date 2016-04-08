@@ -11,7 +11,7 @@
 
 // Rest UI variables
 extern String current_state;
-extern String activeTimers;
+extern String activeAlarms;
 
 // Alarm functions (defined in .ino)
 
@@ -37,7 +37,7 @@ public:
         int &minute,
         int &duration);
 
-    void add_new_timer(
+    bool add_new_timer(
         String options[],
         int &hour,
         int &minute,
@@ -51,11 +51,10 @@ public:
     String digitalClockDisplay(time_t time);
     String printDigits(int digits);
 private:
-    void add(AlarmID_t id);
+    bool add(AlarmID_t id);
     void cancel(AlarmID_t id);
 
     AlarmID_t alarms[MAX_ALARMS];
-    time_t next_alarm;
     bool paused;
 
 };

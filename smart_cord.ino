@@ -3,6 +3,9 @@
 #include "RestUI.h"
 #include "OTAUpdates.h"
 #include "AlarmHandler.h"
+#include "ntptime.h"
+
+#define ALARM_UPDATE_INTERVAL 3000
 
 const char* ssid     = private_ssid;
 const char* password = private_password;
@@ -16,7 +19,9 @@ int DEBUG = 1;
 
 // Variable to hold the current state of relay, which will be displayed
 String current_state = "UNINITIALIZED";
-String activeTimers = "None";
+String activeAlarms = "None";
+
+unsigned long lastAlarmUpdate = 0;
 
 void controlRelay(int state)
 {
@@ -76,6 +81,7 @@ void setup(void)
   startWifi();
   startRestUIServer();
   startUpdateServer();
+  start_ntptime();
 }
 
 void loop() {
@@ -87,11 +93,19 @@ void loop() {
     startWifi();
     startRestUIServer();
     startUpdateServer();
+    start_ntptime();
   }
 
   // Update active timers, if needed
-  alarmHandler.updateActiveAlarms(activeTimers);
+  Alarm.delay(0);
 
+  // Update activeAlarm label
+  if (millis() - lastAlarmUpdate > ALARM_UPDATE_INTERVAL)
+  {
+    alarmHandler.updateActiveAlarms(activeAlarms);
+    lastAlarmUpdate = millis();
+  }
+  
   handleOTAUpdate();
   handleRestUI();
  

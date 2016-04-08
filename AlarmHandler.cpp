@@ -4,8 +4,7 @@
 AlarmHandler alarmHandler = AlarmHandler();
 
 AlarmHandler::AlarmHandler():
-    paused(false),
-    next_alarm(0)
+    paused(false)
 {
     for (int i = 0; i < MAX_ALARMS; i++)
     {
@@ -24,6 +23,18 @@ bool AlarmHandler::parse_timer_string(String command,
     bool success = false;
 
     parse_state state = unknown;
+
+    for (int i = 0; i < command.length(); i++)
+    {
+        // Really simple url decoding, just get rid of it
+        if (command.charAt(i) == '%')
+        {
+            command.setCharAt(i, ' ');
+            command.setCharAt(i+1, ' ');
+            command.setCharAt(i+2, ' ');
+            i+=2;
+        }
+    }
 
     for (int i = 0; i < command.length(); i++)
     {
@@ -52,7 +63,6 @@ bool AlarmHandler::parse_timer_string(String command,
                 {
                     // End of the hour
                     hour = temp.toInt();
-                    i++; // skip the :
                     state = time_minute;
                     temp = "";
                 }
@@ -111,7 +121,11 @@ bool AlarmHandler::parse_timer_string(String command,
                 }
                 break;
             case unknown:
-                if (command.charAt(i) < '0' || command.charAt(i) > '9')
+                if (command.charAt(i) == ' ')
+                {
+                    // Do nothing, skip the space
+                }
+                else if (command.charAt(i) < '0' || command.charAt(i) > '9')
                 {
                     // Not a number, must be beginning of an option
                     state = option;
@@ -130,6 +144,13 @@ bool AlarmHandler::parse_timer_string(String command,
     // Now handle the last temp buffer, if needed
     switch (state)
     {
+        case option:
+            // End of option
+            if (current_option != MAX_OPTIONS)
+            {
+                options[current_option++] = temp;
+            }
+            break;
         case time_unknown:
             // Reached the end of the time without hitting :, must be duration
             duration = temp.toInt();
@@ -156,7 +177,7 @@ bool AlarmHandler::parse_timer_string(String command,
     return success;
 }
 
-void AlarmHandler::add_new_timer(
+bool AlarmHandler::add_new_timer(
         String options[],
         int &hour,
         int &minute,
@@ -183,16 +204,26 @@ void AlarmHandler::add_new_timer(
         }
     }
 
+    if (func == NULL)
+    {
+        Serial.println("Must supply ON or OFF as an option");
+        return false;
+    }
+
     if (duration == 0)
     {
+        time_t alarm_time = 0;
+
+        alarm_time = hour * SECS_PER_HOUR + minute * SECS_PER_MIN;
+
         // Alarm
         if (repeating)
         {
-            id = Alarm.alarmRepeat(hour, minute, 0, func);
+            id = Alarm.alarmRepeat(alarm_time, func);
         }
         else
         {
-            id = Alarm.alarmOnce(hour, minute, 0, func);
+            id = Alarm.alarmOnce(alarm_time, func);
         }
     }
     else
@@ -201,7 +232,13 @@ void AlarmHandler::add_new_timer(
         id = Alarm.timerOnce(duration*60, func);
     }
 
-    add(id);
+    if (id == dtINVALID_ALARM_ID)
+    {
+        Serial.println("Error adding alarm");
+        return false;
+    }
+
+    return add(id);
 }
 
 void AlarmHandler::cancelAllAlarms()
@@ -236,15 +273,23 @@ void AlarmHandler::pauseAllAlarms()
     paused = !paused;
 }
 
-void AlarmHandler::add(AlarmID_t id)
+bool AlarmHandler::add(AlarmID_t id)
 {
-    for (int i = 0; i < MAX_ALARMS; i++)
+    int i = 0;
+    for (i = 0; i < MAX_ALARMS; i++)
     {
         if (alarms[i] == dtINVALID_ALARM_ID)
         {
             alarms[i] = id;
+            break;
         }
     }
+    if (i == MAX_ALARMS)
+    {
+        Serial.println("Already have used all available alarms");
+        return false;
+    }
+    return true;
 }
 
 void AlarmHandler::cancel(AlarmID_t id)
@@ -255,14 +300,13 @@ void AlarmHandler::cancel(AlarmID_t id)
 
 void AlarmHandler::updateActiveAlarms(String &activeAlarms)
 {
-    if (now() < next_alarm)
+    if (Alarm.count() == 0)
     {
-        return;
+        activeAlarms = "None";
     }
     else
     {
         activeAlarms = printAlarms();
-        next_alarm = Alarm.getNextTrigger();
     }
 }
 
@@ -275,20 +319,32 @@ String AlarmHandler::printAlarms()
     {
         if (alarms[i] != dtINVALID_ALARM_ID)
         {
-            active_alarms[current_alarm] = Alarm.read(alarms[i]);
-            if (active_alarms[current_alarm] == dtINVALID_TIME)
+            dtAlarmPeriod_t alarm_type = Alarm.readType(alarms[i]);
+            if (alarm_type != dtTimer)
             {
-                // Remove all alarms that are no longer active
-                // They don't need to be cancelled, that happens automatically
-                alarms[i] = dtINVALID_ALARM_ID;
-            }
-            else
-            {
-                current_alarm++;
+                time_t alarm_time = Alarm.read(alarms[i]);
+                if (alarm_time == dtINVALID_TIME)
+                {
+                    // Remove all alarms that are no longer active
+                    // They don't need to be cancelled, that happens automatically
+                    alarms[i] = dtINVALID_ALARM_ID;
+                    // TODO: this isn't happening
+                    Serial.println("removed alarm");
+                }
+                else
+                {
+                    active_alarms[current_alarm] = alarm_time;
+                    current_alarm++;
+                }
             }
         }
     }
     
+    if (current_alarm == 0)
+    {
+        return String();
+    }
+
     // Code copied from Running Median example
     // sort current_alarm
     for (uint8_t i=0; i< current_alarm-1; i++)
@@ -306,31 +362,21 @@ String AlarmHandler::printAlarms()
         }
     }
 
-    String output = "";    
-    for (int i = 0; i < current_alarm; i++)
+    String output = digitalClockDisplay(active_alarms[0]);
+    for (int i = 1; i < current_alarm; i++)
     {
-        output += digitalClockDisplay(active_alarms[i]) + "\n";
+        output += String(", ") + digitalClockDisplay(active_alarms[i]);
     }
 
+    Serial.println("printAlarms: ");
+    Serial.println(output);
     return output;
 }
 
 
 String AlarmHandler::digitalClockDisplay(time_t time)
 {
-    return String(month(time)) + "/" + String(day(time)) + " at " + String(hourFormat12(time)) + printDigits(minute(time)) + (isAM(time) ? " AM" : " PM");
-    String output = "";
-    // digital clock display of the time
-    Serial.print(hour());
-    printDigits(minute());
-    printDigits(second());
-    Serial.print(" ");
-    Serial.print(day());
-    Serial.print(".");
-    Serial.print(month());
-    Serial.print(".");
-    Serial.print(year()); 
-    Serial.println(); 
+    return String(hourFormat12(time)) + printDigits(minute(time)) + (isAM(time) ? " AM" : " PM");
 }
 
 String AlarmHandler::printDigits(int digits)
