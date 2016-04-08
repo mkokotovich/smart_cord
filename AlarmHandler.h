@@ -26,6 +26,12 @@ typedef enum {
     time_ampm
 } parse_state;
 
+typedef struct {
+    AlarmID_t id;
+    time_t trigger_time;
+    String action;
+} alarm_info_t;
+
 class AlarmHandler {
 
 public:
@@ -47,14 +53,16 @@ public:
     void cancelAllAlarms();
 
     void updateActiveAlarms(String &activeAlarms);
-    String printAlarms();
-    String digitalClockDisplay(time_t time);
-    String printDigits(int digits);
+
 private:
-    bool add(AlarmID_t id);
+    bool addToLocalList(AlarmID_t id, time_t trigger_time, String action);
     void cancel(AlarmID_t id);
 
-    AlarmID_t alarms[MAX_ALARMS];
+    String printAlarms();
+    String displayAlarmAsString(alarm_info_t *alarm);
+    String printDigits(int digits);
+
+    alarm_info_t alarms[MAX_ALARMS];
     bool paused;
 
 };

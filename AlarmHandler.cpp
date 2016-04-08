@@ -8,7 +8,7 @@ AlarmHandler::AlarmHandler():
 {
     for (int i = 0; i < MAX_ALARMS; i++)
     {
-        alarms[i] = dtINVALID_ALARM_ID;
+        alarms[i].id = dtINVALID_ALARM_ID;
     }
 }
 
@@ -63,6 +63,8 @@ bool AlarmHandler::parse_timer_string(String command,
                 {
                     // End of the hour
                     hour = temp.toInt();
+                    // Fix the issue with 24 hour clocks using 0-23
+                    hour = hour % 12;
                     state = time_minute;
                     temp = "";
                 }
@@ -98,16 +100,14 @@ bool AlarmHandler::parse_timer_string(String command,
                 if (command.length() >= i+2)
                 {
                     String sub = command.substring(i, i+2);
-                    if (sub.equalsIgnoreCase("AM"))
+                    if (sub.equalsIgnoreCase("PM"))
                     {
-                        // No need to adjust hour
-                        i += 2;
-                        success = true;
-                        state = unknown;
-                    }
-                    else if (sub.equalsIgnoreCase("PM"))
-                    {
+                        // Convert to 24 hour time
                         hour += 12;
+                    }
+                    if (sub.equalsIgnoreCase("AM") || sub.equalsIgnoreCase("PM"))
+                    {
+                        // If AM/PM is found, skip it and move to unknown
                         i += 2;
                         success = true;
                         state = unknown;
@@ -186,6 +186,8 @@ bool AlarmHandler::add_new_timer(
     OnTick_t func = NULL;
     bool repeating = false;
     AlarmID_t id = 0;
+    time_t trigger_time = 0;
+    String action = " - ";
 
     // Parse the options
     for (int i = 0; i < MAX_OPTIONS; i++)
@@ -193,14 +195,17 @@ bool AlarmHandler::add_new_timer(
         if (options[i].equalsIgnoreCase("ON"))
         {
             func = powerOn;
+            action += "On ";
         }
         else if (options[i].equalsIgnoreCase("OFF"))
         {
             func = powerOff;
+            action += "Off ";
         }
         else if (options[i].equalsIgnoreCase("R"))
         {
             repeating = true;
+            action += "(Repeating) ";
         }
     }
 
@@ -212,11 +217,10 @@ bool AlarmHandler::add_new_timer(
 
     if (duration == 0)
     {
-        time_t alarm_time = 0;
-
-        alarm_time = hour * SECS_PER_HOUR + minute * SECS_PER_MIN;
-
         // Alarm
+        time_t alarm_time = hour * SECS_PER_HOUR + minute * SECS_PER_MIN;
+        trigger_time = alarm_time;
+
         if (repeating)
         {
             id = Alarm.alarmRepeat(alarm_time, func);
@@ -230,6 +234,7 @@ bool AlarmHandler::add_new_timer(
     {
         // Timer
         id = Alarm.timerOnce(duration*60, func);
+        trigger_time = now() + duration*60;
     }
 
     if (id == dtINVALID_ALARM_ID)
@@ -238,17 +243,17 @@ bool AlarmHandler::add_new_timer(
         return false;
     }
 
-    return add(id);
+    return addToLocalList(id, trigger_time, action);
 }
 
 void AlarmHandler::cancelAllAlarms()
 {
     for (int i = 0; i < MAX_ALARMS; i++)
     {
-        if (alarms[i] != dtINVALID_ALARM_ID)
+        if (alarms[i].id != dtINVALID_ALARM_ID)
         {
-            cancel(alarms[i]);
-            alarms[i] = dtINVALID_ALARM_ID;
+            cancel(alarms[i].id);
+            alarms[i].id = dtINVALID_ALARM_ID;
         }
     }
     paused = false;
@@ -258,29 +263,29 @@ void AlarmHandler::pauseAllAlarms()
 {
     for (int i = 0; i < MAX_ALARMS; i++)
     {
-        if (alarms[i] != dtINVALID_ALARM_ID)
+        if (alarms[i].id != dtINVALID_ALARM_ID)
         {
             if (paused == true)
             {
-                Alarm.enable(alarms[i]);
+                Alarm.enable(alarms[i].id);
             }
             else
             {
-                Alarm.disable(alarms[i]);
+                Alarm.disable(alarms[i].id);
             }
         }
     }
     paused = !paused;
 }
 
-bool AlarmHandler::add(AlarmID_t id)
+bool AlarmHandler::addToLocalList(AlarmID_t id, time_t trigger_time, String action)
 {
     int i = 0;
     for (i = 0; i < MAX_ALARMS; i++)
     {
-        if (alarms[i] == dtINVALID_ALARM_ID)
+        if (alarms[i].id == dtINVALID_ALARM_ID)
         {
-            alarms[i] = id;
+            alarms[i].id = id;
             break;
         }
     }
@@ -312,60 +317,58 @@ void AlarmHandler::updateActiveAlarms(String &activeAlarms)
 
 String AlarmHandler::printAlarms()
 {
-    time_t active_alarms[MAX_ALARMS];
+    alarm_info_t *active_alarms[MAX_ALARMS];
     int current_alarm = 0;
 
+    time_t current_time = now();
+
+    // Save a pointer to all active alarms
     for (int i = 0; i < MAX_ALARMS; i++)
     {
-        if (alarms[i] != dtINVALID_ALARM_ID)
+        if (alarms[i].id != dtINVALID_ALARM_ID)
         {
-            dtAlarmPeriod_t alarm_type = Alarm.readType(alarms[i]);
-            if (alarm_type != dtTimer)
+            if (alarms[i].trigger_time < current_time)
             {
-                time_t alarm_time = Alarm.read(alarms[i]);
-                if (alarm_time == dtINVALID_TIME)
-                {
-                    // Remove all alarms that are no longer active
-                    // They don't need to be cancelled, that happens automatically
-                    alarms[i] = dtINVALID_ALARM_ID;
-                    // TODO: this isn't happening
-                    Serial.println("removed alarm");
-                }
-                else
-                {
-                    active_alarms[current_alarm] = alarm_time;
-                    current_alarm++;
-                }
+                // This alarm has already triggered, remove it
+                alarms[i].id = dtINVALID_ALARM_ID;
+                continue;
             }
+            active_alarms[current_alarm] = &(alarms[i]);
         }
     }
     
     if (current_alarm == 0)
     {
-        return String();
+        // No active alarms
+        return "None";
     }
 
+    // Sort active_alarms by trigger time
     // Code copied from Running Median example
-    // sort current_alarm
     for (uint8_t i=0; i< current_alarm-1; i++)
     {
         uint8_t m = i;
         for (uint8_t j=i+1; j< current_alarm; j++)
         {
-            if (active_alarms[j] < active_alarms[m]) m = j;
+            if (active_alarms[j]->trigger_time < active_alarms[m]->trigger_time)
+            {
+                m = j;
+            }
         }
         if (m != i)
         {
-            time_t t = active_alarms[m];
+            alarm_info_t *t = active_alarms[m];
             active_alarms[m] = active_alarms[i];
             active_alarms[i] = t;
         }
     }
 
-    String output = digitalClockDisplay(active_alarms[0]);
+    String output = displayAlarmAsString(active_alarms[0]);
+    // newline for separator
+    String sep = "%0A";
     for (int i = 1; i < current_alarm; i++)
     {
-        output += String(", ") + digitalClockDisplay(active_alarms[i]);
+        output += sep + displayAlarmAsString(active_alarms[i]);
     }
 
     Serial.println("printAlarms: ");
@@ -373,10 +376,9 @@ String AlarmHandler::printAlarms()
     return output;
 }
 
-
-String AlarmHandler::digitalClockDisplay(time_t time)
+String AlarmHandler::displayAlarmAsString(alarm_info_t *alarm)
 {
-    return String(hourFormat12(time)) + printDigits(minute(time)) + (isAM(time) ? " AM" : " PM");
+    return String(hourFormat12(alarm->trigger_time)) + printDigits(minute(alarm->trigger_time)) + (isAM(alarm->trigger_time) ? " AM" : " PM") + alarm->action;
 }
 
 String AlarmHandler::printDigits(int digits)
