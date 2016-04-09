@@ -5,7 +5,7 @@
 #include "AlarmHandler.h"
 #include "ntptime.h"
 
-#define ALARM_UPDATE_INTERVAL 3000
+#define ALARM_UPDATE_INTERVAL 2000
 
 const char* ssid     = private_ssid;
 const char* password = private_password;
