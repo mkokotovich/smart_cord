@@ -8,6 +8,9 @@
 
 #define MAX_OPTIONS 5
 #define MAX_ALARMS dtNBR_ALARMS //Need to set dtNBR_ALARMS in TimeAlarms.h, default is only 6
+#define ALARM_FILE "alarm.bak"
+#define ALARM_FILE_VERSION_V1 "v1"
+#define ALARM_FILE_VERSION ALARM_FILE_VERSION_V1
 
 // Rest UI variables
 extern String current_state;
@@ -56,6 +59,14 @@ public:
     void cancelAllAlarms();
 
     void updateActiveAlarms(String &activeAlarms);
+
+    void saveAlarmsToDisk();
+    void loadAlarmsFromDisk();
+
+    void addAlarmToManager(time_t alarm_time, OnTick_t func, bool repeating, AlarmID_t &id, time_t &trigger_time);
+    void addAlarmIfStillValid(time_t trigger_time, String action, bool repeating, OnTick_t off_func, OnTick_t on_func);
+    void saveAlarmsToDisk(String current_state);
+    void loadAlarmsFromDisk(String &current_state, OnTick_t off_func, OnTick_t on_func);
 
 private:
     bool addToLocalList(AlarmID_t id, time_t trigger_time, String action, bool repeating);

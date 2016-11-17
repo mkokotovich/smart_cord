@@ -1,4 +1,5 @@
 #include "AlarmHandler.h"
+#include "FS.h"
 
 // Global
 AlarmHandler alarmHandler = AlarmHandler();
@@ -204,27 +205,7 @@ bool AlarmHandler::add_new_timer(
     {
         // Alarm
         time_t alarm_time = hour * SECS_PER_HOUR + minute * SECS_PER_MIN;
-        time_t current_time = now();
-
-        if (repeating)
-        {
-            id = Alarm.alarmRepeat(alarm_time, func);
-        }
-        else
-        {
-            id = Alarm.alarmOnce(alarm_time, func);
-        }
-
-        if (elapsedSecsToday(current_time) < alarm_time)
-        {
-            // Alarm still happens today
-            trigger_time = previousMidnight(current_time) + alarm_time;
-        }
-        else
-        {
-            // Alarm happens tomorrow
-            trigger_time = nextMidnight(current_time) + alarm_time;
-        }
+        addAlarmToManager(alarm_time, func, repeating, id, trigger_time);
     }
     else
     {
@@ -240,6 +221,32 @@ bool AlarmHandler::add_new_timer(
     }
 
     return addToLocalList(id, trigger_time, action, repeating);
+}
+
+void AlarmHandler::addAlarmToManager(time_t alarm_time, OnTick_t func, bool repeating, AlarmID_t &id, time_t &trigger_time)
+{
+    time_t current_time = now();
+
+    Serial.println(String("Adding Alarm for ") + alarm_time + String(" and repeating=") + (repeating ? "TRUE" : "FALSE"));
+    if (repeating)
+    {
+        id = Alarm.alarmRepeat(alarm_time, func);
+    }
+    else
+    {
+        id = Alarm.alarmOnce(alarm_time, func);
+    }
+
+    if (elapsedSecsToday(current_time) < alarm_time)
+    {
+        // Alarm still happens today
+        trigger_time = previousMidnight(current_time) + alarm_time;
+    }
+    else
+    {
+        // Alarm happens tomorrow
+        trigger_time = nextMidnight(current_time) + alarm_time;
+    }
 }
 
 void AlarmHandler::cancelAllAlarms()
@@ -407,3 +414,163 @@ String AlarmHandler::printDigits(int digits)
     return output;
 }
 
+void AlarmHandler::saveAlarmsToDisk(String current_state)
+{
+    int num_alarms = 0;
+    
+    // Count alarms
+    for (int i = 0; i < MAX_ALARMS; i++)
+    {
+        if (alarms[i].id != dtINVALID_ALARM_ID)
+        {
+            num_alarms++;
+        }
+    }
+
+    Serial.println(String("Saving state: ") + current_state + String(" and ") + num_alarms + String(" alarms"));
+    // open file for writing
+    File f = SPIFFS.open(ALARM_FILE, "w");
+    if (!f)
+    {
+        Serial.println("file open failed");
+        return;
+    }
+    f.print(ALARM_FILE_VERSION);
+    f.print('\n');
+    f.print(current_state);
+    f.print('\n');
+    f.print(num_alarms);
+    f.print('\n');
+    for (int i = 0; i < MAX_ALARMS; i++)
+    {
+        if (alarms[i].id != dtINVALID_ALARM_ID)
+        {
+            f.print(alarms[i].trigger_time);
+            f.print('\n');
+            Serial.println(String("Writing trigger_time: ") + alarms[i].trigger_time);
+            f.print(alarms[i].action);
+            f.print('\n');
+            Serial.println(String("Writing action: ") + alarms[i].action);
+            f.print((alarms[i].repeating ? "TRUE" : "FALSE"));
+            f.print('\n');
+            Serial.println(String("Writing repeating: ") + (alarms[i].repeating ? "TRUE" : "FALSE"));
+        }
+    }
+
+    f.close();
+
+}
+
+void AlarmHandler::loadAlarmsFromDisk(String &current_state, OnTick_t off_func, OnTick_t on_func) 
+{
+    int num_alarms = 0;
+
+    // Cancel any existing alarms, since we'll be overwriting them
+    cancelAllAlarms();
+
+    File f = SPIFFS.open(ALARM_FILE, "r");
+    if (!f)
+    {
+        // If the file doesn't exist, just return
+        Serial.println("file open failed");
+        return;
+    }
+    Serial.println("====== Reading from SPIFFS file =======");
+    String file_version = f.readStringUntil('\n');
+    if (file_version.equals(String(ALARM_FILE_VERSION_V1)))
+    {
+        current_state = f.readStringUntil('\n');
+        Serial.println(String("Read current state: ") + current_state);
+
+        num_alarms = f.readStringUntil('\n').toInt();
+
+        Serial.println(String("Read number of alarms: ") + num_alarms);
+
+        if (num_alarms > MAX_ALARMS)
+        {
+            num_alarms = MAX_ALARMS;
+            Serial.println(String("Too many alarms, resetting to ") + MAX_ALARMS);
+        }
+
+        for (int i=0; i < num_alarms; i++)
+        {
+            // add each alarm
+            time_t trigger_time = f.readStringUntil('\n').toInt();
+            Serial.println(String("Read trigger_time: ") + trigger_time);
+            String action = f.readStringUntil('\n');
+            Serial.println(String("Read action: ") + action);
+            bool repeating = (f.readStringUntil('\n').equals("TRUE") ? true : false);
+            Serial.println(String("Read repeating: ") + (repeating ? "TRUE" : "FALSE"));
+            addAlarmIfStillValid(trigger_time, action, repeating, off_func, on_func);
+        }
+    }
+    else
+    {
+        Serial.println(String("Unsupported alarm file version: [") + file_version + String("]"));
+    }
+
+    f.close();
+}
+
+void AlarmHandler::addAlarmIfStillValid(time_t trigger_time, String action, bool repeating, OnTick_t off_func, OnTick_t on_func)
+{
+    time_t current_time = now();
+    OnTick_t func = NULL;
+
+    AlarmID_t id = 0;
+
+    if (trigger_time <= current_time && repeating == false)
+    {
+        Serial.println(String("Alarm has already triggered, discard this alarm: ") + action);
+        return;
+    }
+
+    String upperaction = action;
+    upperaction.toUpperCase();
+    if (upperaction.indexOf("OFF") != -1)
+    {
+        func = off_func;
+    }
+    else if (upperaction.indexOf("ON") != -1)
+    {
+        func = on_func;
+    }
+    else
+    {
+        Serial.println(String("Unable to identify action, discard this alarm: ") + action);
+        return;
+    }
+
+    if (repeating == true)
+    {
+        while (trigger_time <= current_time)
+        {
+            // Add a day at a time until we have a valid trigger_time
+            trigger_time += SECS_PER_DAY;
+        }
+    }
+
+    time_t alarm_time = 0;
+    if (elapsedSecsToday(current_time) < elapsedSecsToday(trigger_time))
+    {
+        // Alarm still happens today
+        alarm_time = trigger_time - previousMidnight(current_time);
+    }
+    else
+    {
+        // Alarm happens tomorrow
+        alarm_time = trigger_time - nextMidnight(current_time);
+    }
+
+    addAlarmToManager(alarm_time, func, repeating, id, trigger_time);
+
+    if (id == dtINVALID_ALARM_ID)
+    {
+        Serial.println("Error adding alarm");
+        return;
+    }
+
+    addToLocalList(id, trigger_time, action, repeating);
+
+    return;
+}

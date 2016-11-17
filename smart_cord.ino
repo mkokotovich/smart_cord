@@ -4,6 +4,7 @@
 #include "OTAUpdates.h"
 #include "AlarmHandler.h"
 #include "ntptime.h"
+#include "FS.h"
 
 #define ALARM_UPDATE_INTERVAL 2000
 
@@ -20,6 +21,7 @@ int DEBUG = 1;
 // Variable to hold the current state of relay, which will be displayed
 String current_state = "UNINITIALIZED";
 String activeAlarms = "None";
+String currentTime = "unknown";
 
 unsigned long lastAlarmUpdate = 0;
 
@@ -68,7 +70,7 @@ void setup(void)
   Serial.begin(115200);
 
   // Turn pin off before setting it as output
-  powerOff("");
+  powerOff();
   
   pinMode(relay_pin, OUTPUT);
   if (DEBUG)
@@ -76,24 +78,26 @@ void setup(void)
     pinMode(debug_pin, OUTPUT);
   }
 
-  setupRestUI();
+  SPIFFS.begin();
   
+  // Time needs to be set before starting RestUI
   startWifi();
+  start_ntptime();
+
+  setupRestUI();
   startRestUIServer();
   startUpdateServer();
-  start_ntptime();
 }
 
 void loop() {
   // Reset device if wifi is disconnected
   if (WiFi.status() != WL_CONNECTED)
   {
-    Serial.println("Wifi diconnected, reset connection");
+    Serial.println("Wifi diconnected, save status and reset device");
     
-    startWifi();
-    startRestUIServer();
-    startUpdateServer();
-    start_ntptime();
+    saveRestUIToDisk();
+
+    ESP.reset();
   }
 
   // Update active timers, if needed
@@ -104,6 +108,9 @@ void loop() {
   {
     alarmHandler.updateActiveAlarms(activeAlarms);
     lastAlarmUpdate = millis();
+
+    // Also update time
+    get_time_as_string(currentTime);
   }
   
   handleOTAUpdate();

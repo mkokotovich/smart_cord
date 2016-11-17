@@ -18,21 +18,29 @@ WiFiServer server(UI_LISTEN_PORT);
 // Rest UI variables (declared in ino)
 extern String current_state;
 extern String activeAlarms;
+extern String currentTime;
 
 // Functions declared in ino
 void powerOn();
 void powerOff();
 
+void saveRestUIToDisk(void)
+{
+    alarmHandler.saveAlarmsToDisk(current_state);
+}
+
 // Rest UI functions
 int powerOn(String command)
 {
     powerOn();
+    saveRestUIToDisk();
     return 1;
 }
 
 int powerOff(String command)
 {
     powerOff();
+    saveRestUIToDisk();
     return 1;
 }
 
@@ -83,6 +91,8 @@ int setAlarm(String command)
         return -1;
     }
 
+    saveRestUIToDisk();
+
     return 1;
 }
 
@@ -90,6 +100,7 @@ int cancelAllTimers(String command)
 {
     Serial.println("cancelAllTimers called");
     alarmHandler.cancelAllAlarms();
+    saveRestUIToDisk();
     return 1;
 }
 
@@ -97,6 +108,7 @@ int pauseAllTimers(String command)
 {
     Serial.println("pauseAllTimers called");
     alarmHandler.pauseAllAlarms();
+    saveRestUIToDisk();
     return 1;
 }
 
@@ -105,7 +117,7 @@ void setupRestUI()
     // Give name and ID to device
     rest.set_id("1");
     rest.set_name("esp8266");
-    rest.title("Deck Lights");
+    rest.title("Lights");
 
     // Display the current state
     rest.variable_label("current_state", "Current state of smart cord", &current_state);
@@ -118,6 +130,8 @@ void setupRestUI()
     rest.label("Add an alarm:");
     rest.function_with_input_button("setAlarm", "Add", setAlarm);
     rest.label("For example: 10:15 PM off, or 7:00 am on, or 15 on (in 15 minutes turn it on)", true);
+    // Display current time
+    rest.variable_label("currentTime", "Current time", &currentTime);
     // Display the timer state
     rest.variable_label("activeAlarms", "Active Alarms", &activeAlarms);
     rest.function_button("pauseAllTimers", "Pause/Resume All Timers", pauseAllTimers);
@@ -127,9 +141,18 @@ void setupRestUI()
 
 void startRestUIServer(void)
 {
-  // Start the server
-  server.begin();
-  Serial.println("Rest UI server started on port: " + String(UI_LISTEN_PORT));
+    // Start the server
+    server.begin();
+    Serial.println("Rest UI server started on port: " + String(UI_LISTEN_PORT));
+    alarmHandler.loadAlarmsFromDisk(current_state, powerOff, powerOn);
+    if (current_state.equals("Off"))
+    {
+        powerOff();
+    }
+    else if (current_state.equals("ON"))
+    {
+        powerOn();
+    }
 }
 
 void handleRestUI(void)
